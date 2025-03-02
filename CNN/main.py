@@ -3,30 +3,36 @@ import torch
 import torch.utils.data as data
 import torch.nn as nn
 import torch.optim as optim
-from FaceDataset import FaceDataset
+from demo import FaceDataset
 from FaceCNN import FaceCNN
+from VGG import get_vgg_model
 from tqdm import tqdm
 import datetime
 import matplotlib.pyplot as plt
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 
+from util import plot_history
+
 # 设置设备
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-print(f"Using device: {device}")
+print(f"Using device 11: {device}")
 
 # -------------------- 验证函数（带进度条）--------------------
-def validate(model, dataset, batch_size):
+def validate(model, dataset, batch_size, criterion):
     val_loader = data.DataLoader(dataset, batch_size, shuffle=False)
     model.eval()
     correct, total = 0, 0
+    total_loss = 0.0
     with torch.no_grad():
         for images, labels in tqdm(val_loader, desc="Validating", leave=True):
             images, labels = images.to(device), labels.to(device)
             outputs = model(images)
+            loss = criterion(outputs, labels)
+            total_loss += loss.item() * images.size(0) # images.size(0) refers to the batch size
             _, predicted = torch.max(outputs.data, 1)
             total += labels.size(0)
             correct += (predicted == labels).sum().item()
-    return correct / total
+    return correct / total, total_loss / total
 
 
 # -------------------- 训练函数（带进度条和可视化）--------------------
@@ -39,7 +45,7 @@ def train(model, train_dataset, val_dataset, batch_size, epochs, lr, weight_deca
     scheduler = ReduceLROnPlateau(optimizer, 'min', patience=3, verbose=True)
 
     # 训练历史记录
-    history = {'train_loss': [], 'train_acc': [], 'val_acc': []}
+    history = {'train_loss': [], 'val_loss':[], 'train_acc': [], 'val_acc': []}
     best_val_acc = 0.0  # 用于保存表现最佳的模型
 
     # 主训练循环
@@ -64,17 +70,19 @@ def train(model, train_dataset, val_dataset, batch_size, epochs, lr, weight_deca
 
         # 计算指标
         avg_loss = running_loss / len(train_loader)
-        train_acc = validate(model, train_dataset, batch_size)
-        val_acc = validate(model, val_dataset, batch_size)
+        train_acc, _ = validate(model, train_dataset, batch_size, criterion)
+        val_acc, val_loss = validate(model, val_dataset, batch_size, criterion)
 
         # 记录历史
         history['train_loss'].append(avg_loss)
+        history['val_loss'].append(val_loss)
         history['train_acc'].append(train_acc)
         history['val_acc'].append(val_acc)
 
         # 打印结果
         print(f"Epoch {epoch + 1:03d}/{epochs} | "
-              f"Loss: {avg_loss:.4f} | "
+              f"Train_Loss: {avg_loss:.4f} | "
+              f"Val_Loss: {avg_loss:.4f} | "
               f"Train Acc: {train_acc:.4f} | "
               f"Val Acc: {val_acc:.4f}")
 
@@ -91,34 +99,11 @@ def train(model, train_dataset, val_dataset, batch_size, epochs, lr, weight_deca
             }, 'model/best_face_cnn.pth')
             print(f"Best model saved at epoch {epoch + 1}")
 
-        # 动态调整学习率
-        scheduler.step(avg_loss)
+        # 根据验证集的loss来动态调整学习率
+        scheduler.step(val_loss)
 
     return model, history
 
-
-# -------------------- 绘制损失和准确率曲线 --------------------
-def plot_history(history):
-    # 绘制损失曲线
-    plt.figure(figsize=(12, 6))
-    plt.subplot(1, 2, 1)
-    plt.plot(history['train_loss'], label='Train Loss')
-    plt.xlabel('Epochs')
-    plt.ylabel('Loss')
-    plt.title('Train Loss Curve')
-    plt.legend()
-
-    # 绘制准确率曲线
-    plt.subplot(1, 2, 2)
-    plt.plot(history['train_acc'], label='Train Accuracy')
-    plt.plot(history['val_acc'], label='Validation Accuracy')
-    plt.xlabel('Epochs')
-    plt.ylabel('Accuracy')
-    plt.title('Accuracy Curve')
-    plt.legend()
-
-    plt.tight_layout()
-    plt.show()
 
 
 # -------------------- 主函数 --------------------
@@ -129,16 +114,18 @@ def main():
 
     # 训练参数
     BATCH_SIZE = 128
-    EPOCHS = 500
+    EPOCHS = 100
     LR = 1e-3
     WEIGHT_DECAY = 0
 
     # 初始化模型
-    model = FaceCNN().to(device)
-    try:
-        model.load_state_dict(torch.load("2025-03-01_18-12-22_best_face_cnn.pth"))
-    except Exception as e:
-        print(f"Error loading model: {e}")
+    model = get_vgg_model(7).to(device)
+
+    # model = FaceCNN().to(device)
+    # try:
+    #     model.load_state_dict(torch.load("2025-03-01_18-12-22_best_face_cnn.pth"))
+    # except Exception as e:
+    #     print(f"Error loading model: {e}")
 
     # 开始训练
     model, history = train(model, train_dataset, val_dataset, BATCH_SIZE, EPOCHS, LR, WEIGHT_DECAY)

@@ -23,6 +23,7 @@ class FaceDataset(torch.utils.data.Dataset):
         # face_Gus = cv2.GaussianBlur(face_gray, (3,3), 0)
         # 直方图均衡化
         face_hist = cv2.equalizeHist(face_gray)
+
         # 像素值标准化
         face_normalized = face_hist.reshape(1, 48, 48) / 255.0 # 为与pytorch中卷积神经网络API的设计相适配，需reshape原图
         # 用于训练的数据需为tensor类型
