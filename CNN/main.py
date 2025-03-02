@@ -3,15 +3,13 @@ import torch
 import torch.utils.data as data
 import torch.nn as nn
 import torch.optim as optim
-from demo import FaceDataset
-from FaceCNN import FaceCNN
+from VGG import FaceDataset
 from VGG import get_vgg_model
 from tqdm import tqdm
 import datetime
-import matplotlib.pyplot as plt
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 
-from util import plot_history
+from dl_util.draw import plot_history
 
 # 设置设备
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -113,28 +111,30 @@ def main():
     val_dataset = FaceDataset(root='../data/fer2013/val')
 
     # 训练参数
-    BATCH_SIZE = 128
-    EPOCHS = 100
+    BATCH_SIZE = 32
+    EPOCHS = 150
     LR = 1e-3
     WEIGHT_DECAY = 0
 
     # 初始化模型
     model = get_vgg_model(7).to(device)
 
+    # 3-layer cnn
     # model = FaceCNN().to(device)
-    # try:
-    #     model.load_state_dict(torch.load("2025-03-01_18-12-22_best_face_cnn.pth"))
-    # except Exception as e:
-    #     print(f"Error loading model: {e}")
+
+    try:
+        model.load_state_dict(torch.load("./model/best_face_cnn.pth"))
+    except Exception as e:
+        print(f"Error loading model: {e}")
 
     # 开始训练
     model, history = train(model, train_dataset, val_dataset, BATCH_SIZE, EPOCHS, LR, WEIGHT_DECAY)
 
     # 保存训练历史
-    now = datetime.datetime.now()
-    current_time = now.strftime("%Y-%m-%d_%H-%M-%S")
+    # now = datetime.datetime.now()
+    # current_time = now.strftime("%Y-%m-%d_%H-%M-%S")
 
-    with open(current_time + "_history.json", 'w') as f:
+    with open(f"{model.__class__.__name__}_{BATCH_SIZE}_{EPOCHS}_{LR}_{WEIGHT_DECAY}.json", 'w') as f:
         json.dump(history, f)
     print("History saved!")
 
